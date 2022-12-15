@@ -149,7 +149,7 @@ elif nanValues.serialnumber.size > 0:
 
 # Batch serial numbers 
 
-sizeofbatch = 2 #FIX - change to 100
+sizeofbatch = 100
 if len(listOfSN) > sizeofbatch:
     sys.stdout.write(YELLOW)
     sys.stdout.write(f"\nThis script will work in batches of {sizeofbatch} APs.\n\n")
