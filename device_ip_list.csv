@@ -1,0 +1,2 @@
+serialnumber,hostname,connected,ipaddress,netmask,gateway
+000011112222, XIQ-305C-001, t, 10.128.10.8, 255.255.255.0, 10.128.10.1
