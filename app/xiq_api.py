@@ -250,20 +250,6 @@ class XIQ:
             logger.warning(log_msg)
             raise ValueError(log_msg)
 
-    #BUILDINGS
-    def __buildLocationDf(self, location, pname = 'Global'):
-        if 'parent_id' not in location:
-            temp_df = pd.DataFrame([{'id': location['id'], 'name':location['name'], 'type': 'Global', 'parent':pname}])
-            self.locationTree_df = pd.concat([self.locationTree_df, temp_df], ignore_index=True)
-        else:
-            temp_df = pd.DataFrame([{'id': location['id'], 'name':location['name'], 'type': location['type'], 'parent':pname}])
-            self.locationTree_df = pd.concat([self.locationTree_df, temp_df], ignore_index=True)
-        r = json.dumps(location['children'])
-        if location['children']:
-            parent_name = location['name']
-            for child in location['children']:
-                self.__buildLocationDf(child, pname=parent_name)
-
     ## EXTERNAL FUNCTION
 
     # EXTERNAL ACCOUNTS
@@ -352,36 +338,6 @@ class XIQ:
             log_msg = "Unknown Error: Unable to gain access token for XIQ"
             logger.warning(log_msg)
             raise ValueError(log_msg) 
-
-    ## LOCATIONS # FiX - not used
-    def gatherLocations(self):
-        info=f"gather location tree"
-        url = "{}/locations/tree".format(self.URL)
-        response = self.__setup_get_api_call(info,url)
-        for location in response:
-            self.__buildLocationDf(location)
-        return (self.locationTree_df)
-
-    ## Devices - # FiX - not used
-    def collectDevices(self, pageSize, location_id=None):
-        info = "collecting devices" 
-        page = 1
-        pageCount = 1
-        firstCall = True
-
-        devices = []
-        while page <= pageCount:
-            url = self.URL + "/devices?page=" + str(page) + "&limit=" + str(pageSize)
-            if location_id:
-                url = url  + "&locationId=" +str(location_id)
-            rawList = self.__setup_get_api_call(info,url)
-            devices = devices + rawList['data']
-
-            if firstCall == True:
-                pageCount = rawList['total_pages']
-            print(f"completed page {page} of {rawList['total_pages']} collecting Devices")
-            page = rawList['page'] + 1 
-        return devices
 
     def checkApsBySerial(self, listOfSerials):
         info="check APs by Serial Number"
