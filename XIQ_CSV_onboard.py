@@ -89,13 +89,12 @@ if args.external:
 print("Make sure the csv file is in the same folder as the python script.")
 filename = input("Please enter csv filename: ")
 
-csv_df = pd.read_csv(filename,dtype=str)
-csv_df['serialnumber'].replace('', np.nan, inplace=True)
+csv_df = pd.read_csv(filename,dtype=str).fillna({'serialnumber': np.nan})
 
 # allows for partial completions. Any Device that was checked and csv updated on columm 'xiq_status' will be skipped
 if 'xiq_status' not in csv_df.columns:
     # if xiq_status column does not exist, the column will be created with every device having a NaN value
-    csv_df['xiq_status'] = np.nan
+    csv_df['xiq_status'] = None
     new_filename = 'new_' + filename
 else:
     new_filename = filename
@@ -144,6 +143,7 @@ elif nanValues.serialnumber.size > 0:
     sys.stdout.write("\nSerial numbers were not found for these APs. Please correct and run the script again if you would like to add them.\n  ")
     sys.stdout.write(RESET)
     print(*nanValues.hostname.values, sep = "\n  ")
+    print()
     logger.info("Serial numbers were not found for these APs: " + ",".join(nanValues.hostname.values))
 
 

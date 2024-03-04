@@ -7,7 +7,7 @@ The script will preform API calls to check if any of those serial numbers exist 
 A new CSV file will be created with all the information from the original csv file but have an added column labeled ***'xiq_status'*** . This column will be updated with either ***'Exists'*** if the device already exists in the VIQ, ***'Onboarded'*** if the script successfully onboards the device, or ***'Failed'*** if the script failed to onboard the device.
 
 ## Needed files
-the XIQ_CSV_onboard.py script uses several other files. If these files are missing the script will not funciton.
+the XIQ_CSV_onboard.py script uses several other files. If these files are missing the script will not function.
 In the same folder as the XIQ_CSV_onboard.py script there should be an /app/ folder. Inside this folder should be a logger.py file and a xiq_api.py file. After running the script a new file 'xiq_serial_onboard.log' will be created as well as a new CSV file.
 
 The script requires a CSV file to be entered when ran. This CSV file should be added to the same folder as the script.

@@ -24,7 +24,6 @@ class XIQ:
         self.URL = "https://api.extremecloudiq.com"
         self.headers = {"Accept": "application/json", "Content-Type": "application/json"}
         self.totalretries = 5
-        self.locationTree_df = pd.DataFrame(columns = ['id', 'name', 'type', 'parent'])
         if token:
             self.headers["Authorization"] = "Bearer " + token
         else:
