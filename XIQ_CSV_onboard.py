@@ -37,6 +37,24 @@ totalExisting = 0
 totalOnboard = 0 
 totalFailed = 0
 
+def _create_char_spinner():
+    """Creates a generator yielding a char based spinner.
+    """
+    while True:
+        for character in '|/-\\':
+            yield character
+
+_spinner = _create_char_spinner()
+
+def spinner(label=''):
+    """Prints label with a spinner.
+
+    When called repeatedly from inside a loop this prints
+    a one line CLI spinner.
+    """
+    sys.stdout.write("\r%s %s  " % (label, next(_spinner)))
+    sys.stdout.flush()
+
 ## XIQ API Setup
 if XIQ_API_token:
     x = XIQ(token=XIQ_API_token)
@@ -89,7 +107,18 @@ if args.external:
 print("Make sure the csv file is in the same folder as the python script.")
 filename = input("Please enter csv filename: ")
 
-csv_df = pd.read_csv(filename,dtype=str).fillna({'serialnumber': np.nan})
+# Read the CSV file
+try:
+    csv_df = pd.read_csv(filename, dtype=str)
+except FileNotFoundError:
+    sys.stdout.write(RED)
+    print(f"File {filename} was not found.")
+    print("script is exiting...")
+    sys.stdout.write(RESET)
+    raise SystemExit
+
+# Replace blank strings with NaN in 'serialnumber' and 'floor_id'
+csv_df[['serialnumber', 'floor_id', 'network_policy']] = csv_df[['serialnumber', 'floor_id', 'network_policy']].apply(lambda x: x.str.strip()).replace('', np.nan)
 
 # allows for partial completions. Any Device that was checked and csv updated on columm 'xiq_status' will be skipped
 if 'xiq_status' not in csv_df.columns:
@@ -115,8 +144,10 @@ if duplicateSN:
 
 # Check for rows on CSV file that are missing serial numbers
 nanValues = csv_df[csv_df['serialnumber'].isna()]
+
 # Check for rows that have a status in xiq_status
-new_csv_df = csv_df[csv_df['xiq_status'].isna()]
+new_csv_df = csv_df[csv_df['xiq_status'].isna() & csv_df['serialnumber'].notna()]
+
 if new_csv_df.serialnumber.size == 0:
     log_msg = ("All serial numbers in the CSV file have a status in 'xiq_status'.")
     logger.info(log_msg)
@@ -127,6 +158,8 @@ if new_csv_df.serialnumber.size == 0:
     raise SystemExit
 else:
     print(f"\n{csv_df.serialnumber.size - new_csv_df.serialnumber.size} APs were found with a xiq_status in the CSV file")
+
+
 listOfSN = list(new_csv_df['serialnumber'].dropna().unique())
 
 if nanValues.serialnumber.size > 0 and len(listOfSN) == 0:
@@ -146,95 +179,120 @@ elif nanValues.serialnumber.size > 0:
     print()
     logger.info("Serial numbers were not found for these APs: " + ",".join(nanValues.hostname.values))
 
-
-# Batch serial numbers 
-
-sizeofbatch = 100
-if len(listOfSN) > sizeofbatch:
+# Check for remaining rows on CSV file that are missing location_id
+missingFloor = new_csv_df[new_csv_df['floor_id'].isna()]
+if missingFloor.size > 0:
     sys.stdout.write(YELLOW)
-    sys.stdout.write(f"\nThis script will work in batches of {sizeofbatch} APs.\n\n")
+    sys.stdout.write("\nFloor ids were not found for these APs. Please correct and run the script again if you would like to add them. They will be skipped this run.\n  ")
     sys.stdout.write(RESET)
+    print(*missingFloor.hostname.values, sep = "\n  ")
 
-count = 1
-for i in range(0, len(listOfSN),sizeofbatch):
-    print(f"Starting batch {count} of {math.ceil(len(listOfSN)/sizeofbatch)}")
-    batch = listOfSN[i:i+sizeofbatch]
-    cleanBatch = listOfSN[i:i+sizeofbatch]
-    apSNFound = False
-    # check if they exist 
-    existingAps = x.checkApsBySerial(batch) 
-    for ap in existingAps:
-        batch = list(filter(lambda a: a != ap['serial_number'], batch))
+new_csv_df = new_csv_df.drop(missingFloor.index)
+
+#new_csv_df
+onboard_list = []
+for row, ap_info in new_csv_df.iterrows():
+    data = {
+        "serial_number": ap_info['serialnumber'],
+        "location" : {
+            "location_id": ap_info['floor_id']
+        },
+        "hostname": ap_info['hostname']
+    }
+    if pd.notna(ap_info['network_policy']):
+        data['network_policy_id'] = ap_info["network_policy"]
+    onboard_list.append(data)
+
+# Check number of APs onboarding
+if len(onboard_list) > 30:
+    sys.stdout.write(GREEN)
+    print("\nWith more the 30 APs onboarding, Long-running operation will be used.")
+    sys.stdout.write(RESET)
+    payload = {"extreme": onboard_list,
+               "unmanaged": False
+               }
+    lro_url = x.advanceOnboardAPs(payload,lro=True)
+    lro_result = 'PENDING'
+    while lro_result != 'SUCCEEDED':
+        data = x.checkLRO(lro_url)
+        lro_result = data['metadata']['status']
+        print(f"\nThe long running operation's result is {lro_result}")
+        if lro_result != 'SUCCEEDED':
+            print("Script will sleep for 30 secs and check again.")
+            t = 120
+            while t > 0:
+                spinner()
+                time.sleep(.25)
+                t -= 1
+            sys.stdout.write("\r  ")
+            sys.stdout.flush()
+    response = data['response']
+
+else:
+    payload = {"extreme": onboard_list,
+               "unmanaged": False
+               }
+    response = x.advanceOnboardAPs(payload)
     
-    subtracted = [i for i in cleanBatch if i not in batch]
-    if subtracted:
-        apSNFound = True
-        totalExisting += len(subtracted)
-        logger.info("These AP serial numbers already exist: " + ",".join(subtracted))
-        if len(subtracted) == len(cleanBatch):
-            print("All APs in this batch already exist")
-        else:
-            print(f"\n{len(subtracted)} out of the {len(cleanBatch)} AP serial numbers in this batch already exist.")
-        for ap_serial in subtracted:
-            filt = csv_df['serialnumber'] == ap_serial
+# Log successes
+if "success_devices" in response:
+    sys.stdout.write(GREEN)
+    print("\nThe following devices were onboarded successfully:")
+    sys.stdout.write(RESET)
+    for device in response['success_devices']:
+        totalOnboard += 1
+        filt = csv_df['serialnumber'] == device['serial_number']
+        csv_df.loc[filt, "xiq_status"] = 'Onboarded'
+        log_msg = f"Device {device['serial_number']} successfully onboarded created with id: {device['device_id']}"
+        print(log_msg)
+        logger.info(log_msg)
+
+if "failure_devices" in response:
+    fd_df = pd.DataFrame(response['failure_devices'])
+    error_list = fd_df['error'].unique()
+    for error in error_list:
+        filt = fd_df['error'] == error
+        serials = fd_df.loc[filt,'serial_number'].values
+        if error == 'DEVICE_EXISTED':
+            totalExisting += len(serials)
+            filt = csv_df['serialnumber'].isin(serials)
             csv_df.loc[filt, "xiq_status"] = 'Exists'
-    cleanBatch = batch
-    # if new APs onboard
-    if batch:
-        print("Attempting to onboard APs... ", end='')
-        sys.stdout.flush()
-        data = {
-            "extreme":{
-                "sns" : batch
-            }
-        }
-
-        response = x.onboardAps(data)
-        time.sleep(10)
-        if response != 'Success':
-            totalFailed += len(batch)
-            print("Failed")
-            print("\nfailed to onboard APs with these serial numbers:\n  ", end='')
-            print(*batch, sep = "\n  ")
-            logger.error("Failed to onboard APs " + ",".join(batch))
-            continue
-        existingAps = x.checkApsBySerial(batch)
-        for ap in existingAps:
-            batch = list(filter(lambda a: a != ap['serial_number'], batch))
-        if batch:
-            print("Failed")
-            totalFailed += len(batch)
             sys.stdout.write(YELLOW)
-            sys.stdout.write(f"\n{len(batch)} AP serial numbers were not able to be onboarded at this time. Please check the serial numbers and try again.\n")
+            print("\nThe following AP are already onboard in this XIQ instance:\n  ", end='')
+            print(*serials, sep='\n  ')
             sys.stdout.write(RESET)
-            logger.error("Failed to onboard APs " + ",".join(batch))
-            for ap_serial in batch:
-                filt = csv_df['serialnumber'] == ap_serial
-                csv_df.loc[filt, "xiq_status"] = 'Failed'
-            subtracted = [i for i in cleanBatch if i not in batch]
-            if subtracted:
-                totalOnboard += len(subtracted)
-                if len(subtracted) == len(cleanBatch):
-                    if apSNFound:
-                        print("All remaining APs in this batch have been onboarded")
-                    else:
-                        print("All APs in this batch have been onboarded")
-                else:
-                    print(f"\n{len(subtracted)} AP serial numbers out of the {len(cleanBatch)} serial numbers in this batch have been onboarded.")
-                for ap_serial in subtracted:
-                    filt = csv_df['serialnumber'] == ap_serial
-                    csv_df.loc[filt, "xiq_status"] = 'Onboarded'
+            logger.warning("These AP serial numbers are already onboarded in this XIQ instance: " + ",".join(serials))
+            #response = yesNoLoop("Would you like to move these existing APs to the floorplan?")
+        elif error == 'EXIST_IN_REDIRECT':
+            totalFailed += len(serials)
+            filt = csv_df['serialnumber'].isin(serials)
+            csv_df.loc[filt, "xiq_status"] = 'Exists in different XIQ'
+            sys.stdout.write(YELLOW)
+            print("\nTThese AP serial numbers were not able to be onboarded at this time as the serial numbers belong to another XIQ instance. Please check the serial numbers and try again:\n  ", end='')
+            print(*serials, sep='\n  ')
+            sys.stdout.write(RESET)
+            logger.warning("These AP serial numbers are already onboarded in this XIQ instance: " + ",".join(serials))
+        elif error == 'PRODUCT_TYPE_NOT_EXIST':
+            totalFailed += len(serials)
+            filt = csv_df['serialnumber'].isin(serials)
+            csv_df.loc[filt, "xiq_status"] = 'Serial number not valid'
+            sys.stdout.write(RED)
+            print("\nThese AP serial numbers are not valid. Please check serial numbers and try again:\n ", end='')
+            print(*serials, sep='\n  ')
+            sys.stdout.write(RESET)
+            logger.warning("These AP serial numbers are not valid: " + ",".join(serials))
         else:
-            print("Complete")
-            totalOnboard += len(cleanBatch)
-            for ap_serial in cleanBatch:
-                filt = csv_df['serialnumber'] == ap_serial
-                csv_df.loc[filt, "xiq_status"] = 'Onboarded'
-    count += 1
-    csv_df.to_csv(current_dir +'/'+new_filename,index=False)
+            totalFailed += len(serials)
+            filt = csv_df['serialnumber'].isin(serials)
+            csv_df.loc[filt, "xiq_status"] = error
+            sys.stdout.write(RED)
+            print(f"\nThese AP serial numbers failed to onboard with the error '{error}':")
+            print(*serials, sep='\n  ')
+            sys.stdout.write(RESET)
+            logger.warning(f"These AP serial numbers failed to onboard with '{error}': " + ",".join(serials)) 
 
 
-
+csv_df.to_csv(current_dir +'/'+new_filename,index=False)
 
 print("\nCounts for this run:")
 print(f"    totalExisting = {totalExisting}")
