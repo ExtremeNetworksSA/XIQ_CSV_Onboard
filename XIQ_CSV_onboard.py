@@ -13,7 +13,8 @@ from app.logger import logger
 from app.xiq_api import XIQ
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 logger = logging.getLogger('Serial_Onboard.Main')
-
+# Set the option to opt-in to the future behavior
+pd.set_option('future.no_silent_downcasting', True)
 
 XIQ_API_token = ''
 
