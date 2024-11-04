@@ -7,7 +7,6 @@ import json
 from xmlrpc.client import APPLICATION_ERROR
 from numpy import isin
 import requests
-import pandas as pd
 from pprint import pprint as pp
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parent_dir = os.path.dirname(current_dir)
@@ -42,8 +41,8 @@ class XIQ:
                 raise SystemExit 
     #API CALLS
     def __setup_get_api_call(self, info, url):
-        success = 0
-        for count in range(1, self.totalretries):
+        success = False
+        for count in range(1, self.totalretries+1):
             try:
                 response = self.__get_api_call(url=url)
             except ValueError as e:
@@ -55,10 +54,10 @@ class XIQ:
             except:
                 print(f"API to {info} failed attempt {count} of {self.totalretries} with unknown API error")
             else:
-                success = 1
+                success = True
                 break
-        if success != 1:
-            print("failed to {}. Cannot continue to import".format(info))
+        if not success:
+            print(f"failed to {info}. Cannot continue to import. Please check log for more details.")
             print("exiting script...")
             raise SystemExit
         if 'error' in response:
@@ -71,8 +70,8 @@ class XIQ:
         return response
         
     def __setup_post_api_call(self, info, url, payload):
-        success = 0
-        for count in range(1, self.totalretries):
+        success = False
+        for count in range(1, self.totalretries+1):
             try:
                 response = self.__post_api_call(url=url, payload=payload)
             except ValueError as e:
@@ -84,10 +83,10 @@ class XIQ:
             except:
                 print(f"API to {info} failed attempt {count} of {self.totalretries} with unknown API error")
             else:
-                success = 1
+                success = True
                 break
-        if success != 1:
-            print("failed {}. Cannot continue to import".format(info))
+        if not success:
+            print(f"failed {info}. Cannot continue to import. Please check log for more details.")
             print("exiting script...")
             raise SystemExit
         if 'error' in response:
@@ -100,8 +99,8 @@ class XIQ:
         return response
     
     def __setup_put_api_call(self, info, url, payload=''):
-        success = 0
-        for count in range(1, self.totalretries):
+        success = False
+        for count in range(1, self.totalretries+1):
             try:
                 if payload:
                     self.__put_api_call(url=url, payload=payload)
@@ -116,18 +115,19 @@ class XIQ:
             except:
                 print(f"API to {info} failed attempt {count} of {self.totalretries} with unknown API error")
             else:
-                success = 1
+                success = True
                 break
-        if success != 1:
-            print("failed to {}. Cannot continue to import".format(info))
+        if not success:
+            print(f"failed to {info}. Cannot continue to import. Please check log for more details.")
             print("exiting script...")
             raise SystemExit
         
         return 'Success'
 
     def __setup_lro_api_call(self, info, url, payload, lro):
+        success = False
         url = url + str(lro)
-        for count in range(1, self.totalretries):
+        for count in range(1, self.totalretries+1):
             try:
                 response = requests.post(url, headers= self.headers, data=payload)
             except HTTPError as http_err:
@@ -146,7 +146,9 @@ class XIQ:
                     logger.warning(f"\t\t{response.text}")
                     print(f"API to {info} failed attempt {count} of {self.totalretries} with {log_msg}")
                     continue
-                return response
+                else:
+                    success = True
+                    return response
             else:
                 if response.status_code != 200:
                     log_msg = f"Error - HTTP Status Code: {str(response.status_code)}"
@@ -154,7 +156,13 @@ class XIQ:
                     logger.warning(f"\t\t{response.text}")
                     print(f"API to {info} failed attempt {count} of {self.totalretries} with {log_msg}")
                     continue
-                break
+                else:
+                    success = True
+                    break
+        if not success:
+            print(f"failed to {info}. Cannot continue to import. Please check log for more details.")
+            print("exiting script...")
+            raise SystemExit
         try:
             data = response.json()
         except json.JSONDecodeError:
@@ -278,7 +286,7 @@ class XIQ:
                 success = 1
                 break
         if success != 1:
-            print("failed to get XIQ token. Cannot continue to import")
+            print("failed to get XIQ token. Cannot continue to import. Please check log for more details.")
             print("exiting script...")
             raise SystemExit
         
@@ -298,7 +306,7 @@ class XIQ:
     def __getVIQInfo(self):
         info="get current VIQ name"
         success = 0
-        url = "{}/account/home".format(self.URL)
+        url = f"{self.URL}/account/home"
         for count in range(1, self.totalretries):
             try:
                 data = self.__get_api_call(url=url)
@@ -322,7 +330,7 @@ class XIQ:
         self.__getVIQInfo()
         info="gather accessible external XIQ acccounts"
         success = 0
-        url = "{}/account/external".format(self.URL)
+        url = f"{self.URL}/account/external"
         for count in range(1, self.totalretries):
             try:
                 data = self.__get_api_call(url=url)
@@ -344,7 +352,7 @@ class XIQ:
     def switchAccount(self, viqID, viqName):
         info=f"switch to external account {viqName}"
         success = 0
-        url = "{}/account/:switch?id={}".format(self.URL,viqID)
+        url = f"{self.URL}/account/:switch?id={viqID}"
         payload = ''
         for count in range(1, self.totalretries):
             try:
@@ -361,7 +369,7 @@ class XIQ:
                 success = 1
                 break
         if success != 1:
-            print("failed to get XIQ token to {}. Cannot continue to import".format(info))
+            print(f"failed to get XIQ token to {info}. Cannot continue to import. Please check log for more details.")
             print("exiting script...")
             raise SystemExit
         
@@ -380,14 +388,6 @@ class XIQ:
             log_msg = "Unknown Error: Unable to gain access token for XIQ"
             logger.warning(log_msg)
             raise ValueError(log_msg) 
-
-    def checkApsBySerial(self, listOfSerials):
-        info="check APs by Serial Number"
-        url = self.URL + "/devices?limit=100&sns="
-        snurl = "&sns=".join(listOfSerials)
-        url = url + snurl
-        response = self.__setup_get_api_call(info, url)
-        return(response['data'])
 
     #APS
     def advanceOnboardAPs(self, data, lro=False):
