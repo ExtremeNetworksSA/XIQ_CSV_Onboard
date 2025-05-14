@@ -17,10 +17,14 @@ The log file that is created when running will show any errors that the script m
 ## Preparing the CSV
 ##### required columns
 ***serialnumber*** - each device will need to have a valid serial number in this column
+
 ***hostname*** - the name you would like applied to the device. this can be left blank
+
 ***device_type*** - the type of device. Needs to be AP, EXOS, or VOSS.
+
 ***floor_id*** - The ID of the floor you want the AP added to.
-> an easy way to get this is to open the floor in the GUIplanning tool. The ID is the number in the URL after extremecloudiq.com/#/plan/ 
+> an easy way to get this is to open the floor in the GUIplanning tool. The ID is the number in the URL after extremecloudiq.com/#/plan/
+
 ***network_policy*** - the ID of the network policy you would like applied to the device
 > an easy way to get this is to open the network policy in the GUI. The ID is the number in the URL after extremecloudiq.com/#/config/
 > Note: the value for network_policy is optional for the row. If not added the device will not be added to a network policy.
