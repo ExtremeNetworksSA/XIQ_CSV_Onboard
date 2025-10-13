@@ -130,7 +130,7 @@ except FileNotFoundError:
     raise SystemExit
 
 # check if columns exist
-columns_to_check = ['Serial Number', 'Host Name', 'Device Type', 'Floor Id', 'Network Policy']
+columns_to_check = ['Serial Number', 'Host Name', 'Device Type', 'Floor Id', 'Network Policy Id']
 missing_columns = []
 for column in columns_to_check:
     if column not in csv_df.columns:
@@ -143,7 +143,7 @@ if missing_columns:
     raise SystemExit
 
 # Replace blank strings with NaN in 'Serial Number' and 'floor_id'
-csv_df[['Serial Number', 'Host Name', 'Device Type', 'Floor Id', 'Network Policy']] = csv_df[['Serial Number', 'Host Name', 'Device Type', 'Floor Id', 'Network Policy']].apply(lambda x: x.str.strip()).replace('', np.nan)
+csv_df[['Serial Number', 'Host Name', 'Device Type', 'Floor Id', 'Network Policy Id']] = csv_df[['Serial Number', 'Host Name', 'Device Type', 'Floor Id', 'Network Policy Id']].apply(lambda x: x.str.strip()).replace('', np.nan)
 csv_df[['Host Name']] = csv_df[['Host Name']].replace(np.nan, '')
 # allows for partial completions. Any Device that was checked and csv updated on column 'xiq_status' will be skipped
 if 'xiq_status' not in csv_df.columns:
@@ -237,8 +237,8 @@ for row, device_info in new_csv_df.iterrows():
         },
         "hostname": device_info['Host Name']
     }
-    if pd.notna(device_info['Network Policy']):
-        data['network_policy_id'] = device_info["Network Policy"]
+    if pd.notna(device_info['Network Policy Id']):
+        data['network_policy_id'] = device_info["Network Policy Id"]
     if device_info['Device Type'].upper() == 'AP':
         onboard_ap_list.append(data)
     elif device_info['Device Type'].upper() == 'EXOS':
