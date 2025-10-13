@@ -1,5 +1,10 @@
 # XIQ CSV Onboard
 ### XIQ_CSV_onboard.py
+
+_The software is provided as-is and [Extreme Networks](http://www.extremenetworks.com/) has no obligation to provide maintenance, support, updates, enhancements, or modifications. Any support provided by [Extreme Networks](http://www.extremenetworks.com/) is at its sole discretion._
+
+_Issues and/or bug fixes may be reported on in the Issues for this repository._
+
 ## Purpose
 This script will onboard devices from a CSV file. the CSV file will need to have 5 columns with valid information. A column labeled ***'serialnumber'*** that contains a list of serial numbers. A column labeled ***hostname*** with the name of the device. If no name is provided, XIQ will use the default name. A column labeled ***device_type*** specifying the type of device. Valid options are AP, EXOS, or VOSS. A column labeled ***floor_id*** with the ID of the floor the AP belongs to. And a column labeled ***network_policy*** that includes the id of the network policy to be applied to the device. You can leave the value empty for network policy but the column needs added.
 ## Information
