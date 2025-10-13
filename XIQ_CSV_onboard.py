@@ -10,6 +10,10 @@ import pandas as pd
 import numpy as np
 from app.logger import logger
 from app.xiq_api import XIQ
+
+# Opt-in to future Pandas behavior (avoids warning)
+pd.set_option('future.no_silent_downcasting', True)
+
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 logger = logging.getLogger('Serial_Onboard.Main')
 
@@ -104,6 +108,16 @@ if args.external:
 
 print("Make sure the csv file is in the same folder as the python script.")
 filename = input("Please enter csv filename: ")
+filename = filename.replace("\\ ", " ")
+filename = filename.replace("'", "")
+
+# Check if full path (e.g., from drag-and-drop) and extract basename if needed
+if os.path.isabs(filename):
+    base_filename = os.path.basename(filename)  # e.g., 'myfile.csv' from '/path/to/myfile.csv'
+    print(f"Detected full path: {filename}")
+    print(f"Using basename: {base_filename}")
+else:
+    base_filename = filename  # Use as-is if relative/no path
 
 # Read the CSV file
 try:
@@ -116,7 +130,7 @@ except FileNotFoundError:
     raise SystemExit
 
 # check if columns exist
-columns_to_check = ['serialnumber', 'hostname', 'device_type', 'floor_id', 'network_policy']
+columns_to_check = ['Serial Number', 'Host Name', 'Device Type', 'Floor Id', 'Network Policy']
 missing_columns = []
 for column in columns_to_check:
     if column not in csv_df.columns:
@@ -128,21 +142,21 @@ if missing_columns:
     print("the script cannot continue.")
     raise SystemExit
 
-# Replace blank strings with NaN in 'serialnumber' and 'floor_id'
-csv_df[['serialnumber', 'hostname', 'device_type', 'floor_id', 'network_policy']] = csv_df[['serialnumber', 'hostname', 'device_type', 'floor_id', 'network_policy']].apply(lambda x: x.str.strip()).replace('', np.nan)
-csv_df[['hostname']] = csv_df[['hostname']].replace(np.nan, '')
-# allows for partial completions. Any Device that was checked and csv updated on columm 'xiq_status' will be skipped
+# Replace blank strings with NaN in 'Serial Number' and 'floor_id'
+csv_df[['Serial Number', 'Host Name', 'Device Type', 'Floor Id', 'Network Policy']] = csv_df[['Serial Number', 'Host Name', 'Device Type', 'Floor Id', 'Network Policy']].apply(lambda x: x.str.strip()).replace('', np.nan)
+csv_df[['Host Name']] = csv_df[['Host Name']].replace(np.nan, '')
+# allows for partial completions. Any Device that was checked and csv updated on column 'xiq_status' will be skipped
 if 'xiq_status' not in csv_df.columns:
     # if xiq_status column does not exist, the column will be created with every device having a NaN value
     csv_df['xiq_status'] = None
-    new_filename = 'new_' + filename
+    new_filename = 'new_' + base_filename
 else:
-    new_filename = filename
+    new_filename = base_filename
 
 
 
 # Check for duplicates in the CSV
-duplicateSN = csv_df['serialnumber'].dropna().duplicated().any()
+duplicateSN = csv_df['Serial Number'].dropna().duplicated().any()
 if duplicateSN:
     log_msg = ("Multiple Devices have the same serial numbers in the CSV file. Please fix and try again.")
     logger.warning(log_msg)
@@ -154,12 +168,31 @@ if duplicateSN:
 
 
 # Check for rows on CSV file that are missing serial numbers
-nanValues = csv_df[csv_df['serialnumber'].isna()]
+nanValues = csv_df[csv_df['Serial Number'].isna()]
+
+listOfSN = list(csv_df['Serial Number'].dropna().unique())
+
+if nanValues.get('Serial Number', pd.Series()).size > 0 and len(listOfSN) == 0:
+    log_msg = ("Serial numbers were not found for any Devices in the CSV. Please check to make sure they are added correctly and try again.")
+    logger.warning(log_msg)
+    sys.stdout.write(YELLOW)
+    sys.stdout.write("\n"+log_msg + '\n')
+    print("script is exiting....")
+    sys.stdout.write(RESET)
+    raise SystemExit
+elif nanValues.get('Serial Number', pd.Series()).size > 0:
+    totalFailed += nanValues.get('Serial Number', pd.Series()).size
+    sys.stdout.write(YELLOW)
+    sys.stdout.write("\nSerial numbers were not found for these Devices. Please correct and run the script again if you would like to add them.\n  ")
+    sys.stdout.write(RESET)
+    print(*nanValues['Host Name'].values, sep = "\n  ")
+    print()
+    logger.info("Serial numbers were not found for these Devices: " + ",".join(nanValues['Host Name'].values))
 
 # Check for rows that have a status in xiq_status
-new_csv_df = csv_df[csv_df['xiq_status'].isna() & csv_df['serialnumber'].notna()]
+new_csv_df = csv_df[csv_df['xiq_status'].isna() & csv_df['Serial Number'].notna()]
 
-if new_csv_df.serialnumber.size == 0:
+if new_csv_df['Serial Number'].size == 0:
     log_msg = ("All serial numbers in the CSV file have a status in 'xiq_status'.")
     logger.info(log_msg)
     sys.stdout.write(YELLOW)
@@ -168,48 +201,28 @@ if new_csv_df.serialnumber.size == 0:
     sys.stdout.write(RESET)
     raise SystemExit
 else:
-    print(f"\n{csv_df.serialnumber.size - new_csv_df.serialnumber.size} Devices were found with a xiq_status in the CSV file")
-
-
-listOfSN = list(new_csv_df['serialnumber'].dropna().unique())
-
-if nanValues.serialnumber.size > 0 and len(listOfSN) == 0:
-    log_msg = ("Serial numbers were not found for any Devices in the CSV. Please check to make sure they are added correctly and try again.")
-    logger.warning(log_msg)
-    sys.stdout.write(YELLOW)
-    sys.stdout.write("\n"+log_msg + '\n')
-    print("script is exiting....")
-    sys.stdout.write(RESET)
-    raise SystemExit
-elif nanValues.serialnumber.size > 0:
-    totalFailed += nanValues.serialnumber.size
-    sys.stdout.write(YELLOW)
-    sys.stdout.write("\nSerial numbers were not found for these Devices. Please correct and run the script again if you would like to add them.\n  ")
-    sys.stdout.write(RESET)
-    print(*nanValues.serialnumber.values, sep = "\n  ")
-    print()
-    logger.info("Serial numbers were not found for these Devices: " + ",".join(nanValues.serialnumber.values))
+    print(f"\n{csv_df['Serial Number'].size - nanValues.get('Serial Number', pd.Series()).size - new_csv_df['Serial Number'].size} Devices were found with a xiq_status in the CSV file")
 
 # Check for remaining rows on CSV file that are missing location_id
-missingFloor = new_csv_df[new_csv_df['floor_id'].isna()]
+missingFloor = new_csv_df[new_csv_df['Floor Id'].isna()]
 if missingFloor.size > 0:
     sys.stdout.write(YELLOW)
     sys.stdout.write("\nFloor ids were not found for these Devices. Please correct and run the script again if you would like to add them. They will be skipped this run.\n  ")
     sys.stdout.write(RESET)
-    print(*missingFloor.serialnumber.values, sep = "\n  ")
-    logger.info("loor ids were not found for these Devices: " + ",".join(missingFloor.serialnumber.values))
+    print(*missingFloor['Host Name'].values, sep = "\n  ")
+    logger.info("Floor ids were not found for these Devices: " + ",".join(missingFloor['Host Name'].values))
 
 new_csv_df = new_csv_df.drop(missingFloor.index)
 
 
 # Check for remaining rows on CSV file that are missing location_id
-missingType = new_csv_df[new_csv_df['device_type'].isna()]
+missingType = new_csv_df[new_csv_df['Device Type'].isna()]
 if missingType.size > 0:
     sys.stdout.write(YELLOW)
-    sys.stdout.write("\nDevice Type were not found for these Devicess. Please correct and run the script again if you would like to add them. They will be skipped this run.\n  ")
+    sys.stdout.write("\nDevice Type were not found for these Devices. Please correct and run the script again if you would like to add them. They will be skipped this run.\n  ")
     sys.stdout.write(RESET)
-    print(*missingType.serialnumber.values, sep = "\n  ")
-    logger.info("Device Type were not found for these Devices: " + ",".join(missingType.serialnumber.values))
+    print(*missingType['Host Name'].values, sep = "\n  ")
+    logger.info("Device Type were not found for these Devices: " + ",".join(missingType['Host name'].values))
 new_csv_df = new_csv_df.drop(missingType.index)
 
 #new_csv_df
@@ -218,26 +231,26 @@ onboard_exos_list = []
 onboard_voss_list = []
 for row, device_info in new_csv_df.iterrows():
     data = {
-        "serial_number": device_info['serialnumber'],
+        "serial_number": device_info['Serial Number'],
         "location" : {
-            "location_id": device_info['floor_id']
+            "location_id": device_info['Floor Id']
         },
-        "hostname": device_info['hostname']
+        "hostname": device_info['Host Name']
     }
-    if pd.notna(device_info['network_policy']):
-        data['network_policy_id'] = device_info["network_policy"]
-    if device_info['device_type'].upper() == 'AP':
+    if pd.notna(device_info['Network Policy']):
+        data['network_policy_id'] = device_info["Network Policy"]
+    if device_info['Device Type'].upper() == 'AP':
         onboard_ap_list.append(data)
-    elif device_info['device_type'].upper() == 'EXOS':
+    elif device_info['Device Type'].upper() == 'EXOS':
         onboard_exos_list.append(data)
-    elif device_info['device_type'].upper() == 'VOSS':
+    elif device_info['Device Type'].upper() == 'VOSS':
         onboard_voss_list.append(data)
     else:
         sys.stdout.write(YELLOW)
-        sys.stdout.write(f"\nDevice Type is invalid for {device_info['serialnumber']}. Please correct and run the script again if you would like to add it. It will be skipped this run.\n  ")
+        sys.stdout.write(f"\nDevice Type is invalid for {device_info['Serial Number']}. Please correct and run the script again if you would like to add it. It will be skipped this run.\n  ")
         sys.stdout.write(RESET)
-        print(*missingType.serialnumber.values, sep = "\n  ")
-        logger.info("Device Type were not found for these Devices: " + ",".join(missingType.serialnumber.values))
+        print(*missingType['Serial Number'].values, sep = "\n  ")
+        logger.info("Device Type were not found for these Devices: " + ",".join(missingType['Serial Number'].values))
 
 # Check number of Devices onboarding
 device_count = len(onboard_ap_list) + len(onboard_exos_list) + len(onboard_voss_list)
@@ -282,7 +295,7 @@ if "success_devices" in response:
     sys.stdout.write(RESET)
     for device in response['success_devices']:
         totalOnboard += 1
-        filt = csv_df['serialnumber'] == device['serial_number']
+        filt = csv_df['Serial Number'] == device['serial_number']
         csv_df.loc[filt, "xiq_status"] = 'Onboarded'
         log_msg = f"Device {device['serial_number']} successfully onboarded created with id: {device['device_id']}"
         print(log_msg)
@@ -296,17 +309,16 @@ if "failure_devices" in response:
         serials = fd_df.loc[filt,'serial_number'].values
         if error == 'DEVICE_EXISTED':
             totalExisting += len(serials)
-            filt = csv_df['serialnumber'].isin(serials)
+            filt = csv_df['Serial Number'].isin(serials)
             csv_df.loc[filt, "xiq_status"] = 'Exists'
             sys.stdout.write(YELLOW)
-            print("\nThe following AP are already onboard in this XIQ instance:\n  ", end='')
+            print("\nThe following devices are already onboard to a XIQ instance:\n  ", end='')
             print(*serials, sep='\n  ')
             sys.stdout.write(RESET)
-            logger.warning("These Device serial numbers are already onboarded in this XIQ instance: " + ",".join(serials))
-            #response = yesNoLoop("Would you like to move these existing APs to the floorplan?")
+            logger.warning("These Device serial numbers are already onboarded to a XIQ instance: " + ",".join(serials))
         elif error == 'EXIST_IN_REDIRECT':
             totalFailed += len(serials)
-            filt = csv_df['serialnumber'].isin(serials)
+            filt = csv_df['Serial Number'].isin(serials)
             csv_df.loc[filt, "xiq_status"] = 'Exists in different XIQ'
             sys.stdout.write(YELLOW)
             print("\nTThese Device serial numbers were not able to be onboarded at this time as the serial numbers belong to another XIQ instance. Please check the serial numbers and try again:\n  ", end='')
@@ -315,7 +327,7 @@ if "failure_devices" in response:
             logger.warning("These Device serial numbers are already onboarded in this XIQ instance: " + ",".join(serials))
         elif error == 'PRODUCT_TYPE_NOT_EXIST':
             totalFailed += len(serials)
-            filt = csv_df['serialnumber'].isin(serials)
+            filt = csv_df['Serial Number'].isin(serials)
             csv_df.loc[filt, "xiq_status"] = 'Serial number not valid'
             sys.stdout.write(RED)
             print("\nThese Device serial numbers are not valid. Please check serial numbers and try again:\n ", end='')
@@ -324,7 +336,7 @@ if "failure_devices" in response:
             logger.warning("These Device serial numbers are not valid: " + ",".join(serials))
         else:
             totalFailed += len(serials)
-            filt = csv_df['serialnumber'].isin(serials)
+            filt = csv_df['Serial Number'].isin(serials)
             csv_df.loc[filt, "xiq_status"] = error
             sys.stdout.write(RED)
             print(f"\nThese Device serial numbers failed to onboard with the error '{error}':")
